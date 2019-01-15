@@ -54,7 +54,24 @@ class ElgamalPublicKey:
         """
         if r == None:
             r = self.random()
-        # Message length must be less than 20 bits. @students: Why is it so ?
+        # Message length must be less than 20 bits.
+        # @students: Why is it so ?
+        # **********************************************************************
+        # Exercise 3
+        # ==========
+        # class ElgamalSecretKey:
+        #     [...]
+        #     def decrypt(self, c):
+        #         [...]
+        #         m = dLog(p, g, g_m)
+        #         return [...]
+        # 
+        # def dLog(...):
+        #     [...]
+        #     while i < 2 ** 20:  <== discrete logarithm is only computed for
+        #         [...]                max. 20 bits, therefore making impossible
+        #                              to use 128bit keys
+        # **********************************************************************
         assert len(format(m, "b")) <= 20
         g = self.G[0]
         p = self.G[1]

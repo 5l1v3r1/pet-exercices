@@ -15,8 +15,11 @@ from six.moves import input
 from Crypto.Random import random
 
 from logic_circuit import Gate, Circuit, INPUT_GATE
-# from garbled_circuit import garble_circuit, evaluate_garbled_circuit
-from garbled_circuit_freexor import garble_circuit, evaluate_garbled_circuit
+from garbled_circuit import garble_circuit, evaluate_garbled_circuit
+#from garbled_circuit_freexor import garble_circuit, evaluate_garbled_circuit
+
+from benchmark import benchmark, BenchmarkResults
+
 
 prs_circuit = Circuit(
     {
@@ -76,23 +79,24 @@ def test_prs_circuit():
             print(ai_n, bi_n, prs_result(*res))
 
 
-def run_garbled_prs():
+@benchmark
+def run_garbled_prs(i=None):
     # Alice's inputs are A,B chosen randomly
     alice_input = {"A": random.getrandbits(1), "B": random.getrandbits(1)}
 
-    Bob_choice = None
+    Bob_choice = i
     while Bob_choice not in ["PAPER", "ROCK", "SCISSORS", "LOSE", "P", "R", "S", "L"]:
         Bob_choice = input(
-            "Bob'choice is PAPER (P), ROCK (R), SCISSORS (S) or LOSE (L) : "
+            "Bob'choice is (P)APER, (R)OCK, (S)CISSORS or (L)OSE : "
         )
     C, D = choice_to_bin(Bob_choice)
     bob_input = {"C": C, "D": D}
 
     # @students: Who runs the next line ? Alice or Bob ? (and is the other
-    # party involved in a sub-step ?)
+    #             party involved in a sub-step ?)
     garbled_circuit, input_keys, ot_senders = garble_circuit(prs_circuit, alice_input)
     # @students: Who runs the next line ? Alice or Bob ? (and is the other
-    # party involved in a sub-step ?)
+    #             party involved in a sub-step ?)
     circuit_state = evaluate_garbled_circuit(
         prs_circuit, bob_input, garbled_circuit, input_keys, ot_senders
     )
@@ -108,4 +112,13 @@ def run_garbled_prs():
 
 if __name__ == "__main__":
     #test_prs_circuit()
-    run_garbled_prs()
+    #run_garbled_prs()
+    # **************************************************************************
+    # Exercise 4
+    # ==========
+    # benchmark run_garbled_prs by (un)commenting imports of garbled_circuit or
+    #  garbled_circuit_freexor
+    for i in range(20):
+        run_garbled_prs(random.choice(["P", "R", "S", "L"]))
+    print("Average time: {} seconds".format(BenchmarkResults.average()))
+    # **************************************************************************

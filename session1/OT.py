@@ -17,7 +17,7 @@ from elgamal import elgamal_param_gen
 from aes import AES_key
 
 
-class Sender:
+class Sender(object):
     """Oblblivious transfer sender for AES keys
 
     :param msg_0: Message 0
@@ -39,26 +39,30 @@ class Sender:
         :param pk: Encryption public key
         :type c: ElgamalCiphertext
         :type pk: ElgamalPublicKey
-        :return: Encrypted responses e_0, e_1
+        :return: Encrypted responses c_0, c_1
         :rtype: (ElgamalCiphertext, ElgamalCiphertext)
         """
+        # **********************************************************************
+        # Exercise 1
+        # ==========
         # <To be done by students>
-
+        # c = Enc_pk(b) (first input of this method)
         r_0 = pk.random()
         r_1 = pk.random()
-
         enc_1 = pk.encrypt(1)
-
-        e_0 = ((enc_1 - c) * self.m_0.as_int()) + (r_0 * c)
-        e_1 = (c * self.m_1.as_int()) + (r_1 * (enc_1 - c))
-
+        # from the slides:
+        #   c_0 = Enc_pk((1-b) * x_0 + r_0 * b)
+        c_0 = ((enc_1 - c) * self.m_0.as_int()) + (r_0 * c)
+        # from the slides:
+        #   c_1 = Enc_pk(b * x_1 + r_1 * (1-b))
+        c_1 = (c * self.m_1.as_int()) + (r_1 * (enc_1 - c))
         # </To be done by students>
+        # **********************************************************************
+        return c_0, c_1
 
-        return e_0, e_1
 
-
-class Receiver:
-    """Oblblivious transfer receiver for AES keys
+class Receiver(object):
+    """Oblivious transfer receiver for AES keys
 
     Attributes:
     * pk: Public key
@@ -76,50 +80,56 @@ class Receiver:
         :return: OT challenge
         :rtype: ElgamalCiphertext
         """
+        # **********************************************************************
+        # Exercise 1
+        # ==========
         # <To be done by students>
-
         return self.pk.encrypt(b)
-
         # </To be done by students>
+        # **********************************************************************
 
-    def decrypt_response(self, e_0, e_1, b):
+    def decrypt_response(self, c_0, c_1, b):
         """Decrypt response received from Sender
 
-        :param e_0: Response part 0
-        :param e_1: Response part 1
-        :type e_0: ElgamalCiphertext
-        :type e_1: ElgamalCiphertext
+        :param c_0: Response part 0
+        :param c_1: Response part 1
+        :type c_0: ElgamalCiphertext
+        :type c_1: ElgamalCiphertext
         :return: Transferred message
         :rtype: AES_key
         """
+        # **********************************************************************
+        # Exercise 1
+        # ==========
         # <To be done by students>
-
-        if b == 0:
-            m = self.sk.decrypt(e_0)
-        elif b == 1:
-            m = self.sk.decrypt(e_1)
-
+        m = self.sk.decrypt([c_0, c_1][b])
         # </To be done by students>
+        # **********************************************************************
         key = AES_key.from_int(m)
         return key
 
 
 def test_OT():
-    b = random.getrandbits(1)
+    # See slides "Secure Computation" - 24:
+    # initialize [R]eceiver
     Bob = Receiver()
-
-    k0 = AES_key.gen_random()
-    k1 = AES_key.gen_random()
-    Alice = Sender(k0, k1)
-
-    c = Bob.challenge(b)
+    # initialize [S]ender with (x0, x1) to be sent to R
+    x_0 = AES_key.gen_random()
+    x_1 = AES_key.gen_random()
+    Alice = Sender(x_0, x_1)
+    # start the protocol
+    # 1) R sends pk,Enc_pk(b) to S
+    b = random.getrandbits(1)
     pk = Bob.pk
-
-    e0, e1 = Alice.response(c, pk)
-    k = Bob.decrypt_response(e0, e1, b)
-
-    assert (k0, k1)[b] == k
-    print(k0.as_int(), k1.as_int(), b, k.as_int())
+    c = Bob.challenge(b)
+    # 2) S sends (c_0,c_1) to R
+    c_0, c_1 = Alice.response(c, pk)
+    # 3) R can now select the right c_i with b and get mb by decrypting it with
+    #    its secret key
+    x = Bob.decrypt_response(c_0, c_1, b)
+    # protocol over ; now verify the result
+    assert (x_0, x_1)[b] == x
+    #print(x_0.as_int(), x_1.as_int(), b, x.as_int())
 
 
 if __name__ == "__main__":

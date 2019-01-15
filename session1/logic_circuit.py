@@ -84,20 +84,22 @@ class Circuit:
             assert self.g[g_id].kind == "INPUT"
         return CircuitEvaluation(self, input_vals)
 
-    # ADDED FOR FREEXOR
+    # **************************************************************************
+    # Exercise 4
+    # ==========
+    # Method required for support of Free-XOR
     def ordered_gates(self):
-        all_keys = self.g.keys()
-        ordered = [i for i in all_keys if self.g[i].kind == "INPUT"]
-
-        all_keys = [x for x in all_keys if x not in ordered]
-
-        while all_keys != []:
-            for key in all_keys:
-                if self.g[key].in0_id in ordered and self.g[key].in1_id in ordered:
-                    ordered.append(key)
-                    all_keys.remove(key)
-
-        return ordered
+        done = [g_id for g_id, g in self.g.items() if g.kind == "INPUT"]
+        todo = [g_id for g_id, g in self.g.items() if g.kind != "INPUT"]
+        for g_id in done:
+            yield g_id
+        while len(todo) > 0:
+            for g_id in todo:
+                _ = self.g[g_id]
+                if _.in0_id in done and _.in1_id in done:
+                    done.append(todo.pop(todo.index(g_id)))
+                    yield g_id
+    # **************************************************************************
 
 
 class CircuitEvaluation:

@@ -14,9 +14,10 @@ import six
 from Crypto.Random import random
 import Crypto.Util.number
 
-from aes import AES_key
 import OT
+from aes import AES_key
 from logic_circuit import Gate
+
 
 def garble_circuit(circuit, myinputs):
     """Garble a circuit
@@ -32,9 +33,6 @@ def garble_circuit(circuit, myinputs):
     - garbled_table: dictionnary {gate_id: 4*[AES_key]}
     - input_keys: dictionnary {input_gate_id: AES_key}
     - ot_senders: dictionnary {input_gate_id: OT.Sender}
-
-    @student: What are the key steps in this function that make it such that
-    the inputs of Alice are not revealed to Bob ?
     """
     # Garbling keys (k_0, k_1) for each gate => secret
     output_table = {}
@@ -45,31 +43,41 @@ def garble_circuit(circuit, myinputs):
     # OT senders for inputs of the other guy => public
     ot_senders = {}
 
-    # global random R value for Free-Xor
+    # **************************************************************************
+    # Exercise 4
+    # ==========
+    # we start the Free-XOR optimization (slide 38) here by defining the global
+    #  random R value
     R = AES_key.gen_random().as_int()
 
     # ---- Input validation ----
     for g_id, g_value in six.iteritems(myinputs):
         assert circuit.g[g_id].kind == "INPUT"
         assert g_value in (0, 1)
-
+    
     # ---- Garbling keys generation ----
-    ordered_gates = circuit.ordered_gates()
-    for g_id in ordered_gates:
+    # we modify the original implementation as output keys generation now
+    #  depends on output ones, therefore requiring to sort the gates in order of
+    #  
+    for g_id in circuit.ordered_gates():
         # For output gates, we encrypt the binary output instead of an AES key.
         if not g_id in circuit.output_gates:
-            # FREEXOR GATE
-            if circuit.g[g_id].kind == "XOR":
-                k_0 = AES_key.from_int(output_table[circuit.g[g_id].in0_id][0].as_int() ^ output_table[circuit.g[g_id].in1_id][0].as_int())
-            else:
-                k_0 = AES_key.gen_random()
+            g = circuit.g[g_id]
+            # key generation ; see lecture "Secure Computation", slide 38
+            k_0 = AES_key.from_int(output_table[g.in0_id][0].as_int() ^ \
+                                   output_table[g.in1_id][0].as_int()) \
+                  if g.kind == "XOR" else AES_key.gen_random()
             k_1 = AES_key.from_int(k_0.as_int() ^ R)
             output_table[g_id] = (k_0, k_1)
 
     # ---- Garbled tables generation ----
     for g_id, gate in six.iteritems(circuit.g):
         # We already retrieved the values for all the input gates.
-        if gate.kind != "INPUT" and (gate.kind != "XOR" or g_id in circuit.output_gates): # no need to garble xor gates
+        # Free XOR trick optimization ; no encryption/decryption needed for
+        #  inner XOR gates, but well for output XOR gates (otherwise, the result
+        #  of these will be an AES key while it should be 0 or 1
+        if gate.kind != "INPUT" and \
+            (gate.kind != "INPUT" or g_id in circuit.output_gates):
             K_0 = output_table[gate.in0_id]  # K_0 = k_00, k_01
             K_1 = output_table[gate.in1_id]  # K_1 = k_10, k_11
             c_list = []
@@ -85,9 +93,9 @@ def garble_circuit(circuit, myinputs):
                     c = K_1[j].encrypt(m)
                     c_ij = K_0[i].encrypt(c)
                     c_list.append(c_ij)
-            # @students: Why is it important to shuffle the list?
             random.shuffle(c_list)
             garbled_table[g_id] = c_list
+            
 
     # ---- Ungarbling keys generation for my inputs ----
     for g_id, input_val in six.iteritems(myinputs):
@@ -118,9 +126,6 @@ def evaluate_garbled_circuit(circuit, myinputs, garbled_table, input_keys, ot_se
         values
     :return: State of the evaluated circuit
     :rtype: dictionnary {gate_id: gate_output_value}
-
-    @student: What are the key steps in this function that make it such that
-    the inputs of Bob are not revealed to Alice ?
     """
     state = input_keys.copy()
     # ---- Input validation ----
@@ -129,38 +134,22 @@ def evaluate_garbled_circuit(circuit, myinputs, garbled_table, input_keys, ot_se
         assert g_value in (0, 1)
     assert set(ot_senders) == set(myinputs)
 
-    # ---- make OTs, store resulting keys in state ----
-    # <to be completed by students>
-
-    for i in myinputs:
-        b = myinputs[i]
+    for i, b in myinputs.items():
         Bob = OT.Receiver()
-
-        c = Bob.challenge(b)
-        pk = Bob.pk
-
-        e0, e1 = ot_senders[i].response(c, pk)
-        k = Bob.decrypt_response(e0, e1, b)
-
-        state[i] = k
-
-    # </to be completed by students>
+        pk, c = Bob.pk, Bob.challenge(b)
+        c_0, c_1 = ot_senders[i].response(c, pk)
+        state[i] = Bob.decrypt_response(c_0, c_1, b)
 
     # ---- Recursive ungarbling ----
     def _evaluate_garbled_gate_rec(g_id):
-        # <to be completed by students>
-
         gate = circuit.g[g_id]
-
         if gate.in0_id not in state:
             _evaluate_garbled_gate_rec(gate.in0_id)
-
         if gate.in1_id not in state:
             _evaluate_garbled_gate_rec(gate.in1_id)
-
         key0 = state[gate.in0_id]
         key1 = state[gate.in1_id]
-
+        # Free XOR trick optimization ; no need to decrypt
         if gate.kind == "XOR" and g_id not in circuit.output_gates:
             state[g_id] = AES_key.from_int(key0.as_int() ^ key1.as_int())
         else:
@@ -169,12 +158,11 @@ def evaluate_garbled_circuit(circuit, myinputs, garbled_table, input_keys, ot_se
                 if decoded_line is not None:
                     state[g_id] = decoded_line
 
-        # </to be completed by students>
-
     for g_id in circuit.output_gates:
         _evaluate_garbled_gate_rec(g_id)
 
     return state
+    # **************************************************************************
 
 
 INT_MARKER = 15*b'\x00' + b'\x01'
@@ -203,6 +191,5 @@ def _decode_decryption(d):
     elif d[16:] == KEY_MARKER:
         return AES_key.from_bytes(d[:16])
     else:
-        # @students: When is this branch taken ?
         return None
 

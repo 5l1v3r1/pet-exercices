@@ -14,9 +14,10 @@ import six
 from Crypto.Random import random
 import Crypto.Util.number
 
-from aes import AES_key
 import OT
+from aes import AES_key
 from logic_circuit import Gate
+
 
 def garble_circuit(circuit, myinputs):
     """Garble a circuit
@@ -32,10 +33,10 @@ def garble_circuit(circuit, myinputs):
     - garbled_table: dictionnary {gate_id: 4*[AES_key]}
     - input_keys: dictionnary {input_gate_id: AES_key}
     - ot_senders: dictionnary {input_gate_id: OT.Sender}
-
-    @student: What are the key steps in this function that make it such that
-    the inputs of Alice are not revealed to Bob ?
     """
+    # @students: What are the key steps in this function that make it such that
+    #             the inputs of Alice are not revealed to Bob ?
+    
     # Garbling keys (k_0, k_1) for each gate => secret
     output_table = {}
     # Garbled table for each gate => public
@@ -78,6 +79,8 @@ def garble_circuit(circuit, myinputs):
                     c_ij = K_0[i].encrypt(c)
                     c_list.append(c_ij)
             # @students: Why is it important to shuffle the list?
+            # ANSWER: to avoid leaking keys due to the ordering of c_ij's (the
+            #          Garbled Circuit Table values)
             random.shuffle(c_list)
             garbled_table[g_id] = c_list
 
@@ -99,21 +102,20 @@ def evaluate_garbled_circuit(circuit, myinputs, garbled_table, input_keys, ot_se
     """Evaluate a garbled circuit
 
     :param circuit: circuit to evaluate
-    :type circuit: logic_circuit.Circuit
+    :type circuit: lib.logic_circuit.Circuit
     :param myinputs: known inputs, to be kept hidden
     :type myinputs: dictionnary {gate_id: 0/1}
-    :param garbled_table: Table of grabled logic gates
+    :param garbled_table: Table of garbled logic gates
     :type garbled_table: dictionnary {gate_id: 4*[AES_key]}
     :param input_keys: ungarbling keys already known
     :type input_keys: dictionnary {input_gate_id: AES_key}
     :param ot_senders: OT senders to recover missing input keys using myinputs
-        values
+                        values
     :return: State of the evaluated circuit
     :rtype: dictionnary {gate_id: gate_output_value}
-
-    @student: What are the key steps in this function that make it such that
-    the inputs of Bob are not revealed to Alice ?
     """
+    # @students: What are the key steps in this function that make it such that
+    #             the inputs of Bob are not revealed to Alice ?
     state = input_keys.copy()
     # ---- Input validation ----
     for g_id, g_value in six.iteritems(myinputs):
@@ -121,50 +123,64 @@ def evaluate_garbled_circuit(circuit, myinputs, garbled_table, input_keys, ot_se
         assert g_value in (0, 1)
     assert set(ot_senders) == set(myinputs)
 
+    # **************************************************************************
     # ---- make OTs, store resulting keys in state ----
     # <to be completed by students>
-
-    for i in myinputs:
-        b = myinputs[i]
+    for i, b in myinputs.items():
         Bob = OT.Receiver()
-
-        c = Bob.challenge(b)
-        pk = Bob.pk
-
-        e0, e1 = ot_senders[i].response(c, pk)
-        k = Bob.decrypt_response(e0, e1, b)
-
-        state[i] = k
-
+        pk, c = Bob.pk, Bob.challenge(b)
+        c_0, c_1 = ot_senders[i].response(c, pk)
+        state[i] = Bob.decrypt_response(c_0, c_1, b)
     # </to be completed by students>
+    # **************************************************************************
 
     # ---- Recursive ungarbling ----
     def _evaluate_garbled_gate_rec(g_id):
+        # **********************************************************************
+        # Exercise 2
+        # ==========
+        # (b) Complete this part of the function.
         # <to be completed by students>
-
+        #  when evaluating a gate, make a shortcut variable first
         gate = circuit.g[g_id]
-
+        #  if gate's inputs are not already evaluated, recursively do so
         if gate.in0_id not in state:
             _evaluate_garbled_gate_rec(gate.in0_id)
-
         if gate.in1_id not in state:
             _evaluate_garbled_gate_rec(gate.in1_id)
-
+        # now that inputs are evaluated, get their related keys from the state
         key0 = state[gate.in0_id]
         key1 = state[gate.in1_id]
-
+        # and decrypt each line from the received GCT up to the decodable one
+        #  (others could not be decoded as only one set of input keys works)
         for line in garbled_table[g_id]:
             decoded_line = _decode_decryption(key1.decrypt(key0.decrypt(line)))
             if decoded_line is not None:
+                # at this point, if decoded_line is an AES key, it means that
+                #  there are still gates behind to be evaluated :
+                # if decoded_line is an integer, then we reached the end of the
+                #  circuit
                 state[g_id] = decoded_line
-
         # </to be completed by students>
+        # **********************************************************************
 
     for g_id in circuit.output_gates:
         _evaluate_garbled_gate_rec(g_id)
 
     return state
 
+
+# ******************************************************************************
+# Exercise 2
+# ==========
+# (a) When decrypting the garbled table for a logic gate, how does one know 
+#      that a decryption is correct ?
+# ANSWER: the decryption is incorrect when the decrypted value of
+#          _decode_decryption(d) does not hold a marker indicating its type in
+#          the 16 trailing bytes (see branch with 'return None' hereafter) ;
+#         i.e. when decrypting a bad line from the Garbled Circuit Table (GCT)
+#          (cfr only one GCT line will decrypt correctly given the input keys)
+# ******************************************************************************
 
 INT_MARKER = 15*b'\x00' + b'\x01'
 KEY_MARKER = 16*b'\x00'
@@ -193,5 +209,7 @@ def _decode_decryption(d):
         return AES_key.from_bytes(d[:16])
     else:
         # @students: When is this branch taken ?
+        # ANSWER: when decrypting a bad line from the GCT (no marker will be
+        #          present in the decrypted value)
         return None
 

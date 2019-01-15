@@ -10,8 +10,10 @@ from Crypto.Cipher import AES
 import Crypto.Random.random as rd
 import Crypto.Util.number
 
+
 AES_KEY_LEN_BYTES = 16
 AES_BLOCK_LEN_BYTES = 16
+
 
 class AES_key:
     """AES Key with multiple representations
